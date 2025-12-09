@@ -1,0 +1,19 @@
+# 消融与改进配置示例
+embed_dim: 128
+n_layers: 4
+lr: 0.001
+batch_size: 1024
+eval_batch_size: 2048
+epochs: 30
+reg: 1e-4
+neighbor_sampling: true
+num_neighbors: 20
+use_gpu: true
+save_path: "checkpoints/ablation_n4_d128.pt"
+log_interval: 1
+topk: 20
+ablation:
+  use_multi_behavior: true
+  behavior_weights: "click:1,cart:2,fav:2,buy:3"
+  time_decay: 0.98
+  recent_days: 7

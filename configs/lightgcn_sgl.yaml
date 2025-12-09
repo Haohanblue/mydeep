@@ -1,0 +1,18 @@
+embed_dim: 128
+n_layers: 4
+lr: 0.001
+batch_size: 2048
+eval_batch_size: 2048
+epochs: 30
+reg: 1e-4
+neighbor_sampling: false
+num_neighbors: 20
+use_gpu: false
+save_path: "checkpoints/lightgcn_sgl_n4_d128.pt"
+log_interval: 1
+topk: 20
+ssl:
+  enabled: true
+  ratio: 0.05
+  temperature: 0.3
+  aug: edge   # 可选: edge|node|rw

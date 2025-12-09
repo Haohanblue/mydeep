@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/data00/home/lihan.henley/mydeep/scripts/polars_train.py", line 23, in <module>
+    from model.lightgcn import LightGCN
+ModuleNotFoundError: No module named 'model'

@@ -1,0 +1,7 @@
+/data00/home/lihan.henley/mydeep/.venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:3860: RuntimeWarning: Mean of empty slice.
+  return _methods._mean(a, axis=axis, dtype=dtype,
+/data00/home/lihan.henley/mydeep/.venv/lib/python3.13/site-packages/numpy/_core/_methods.py:144: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+Recall@20: nan
+NDCG@20: nan
+HitRate@20: nan

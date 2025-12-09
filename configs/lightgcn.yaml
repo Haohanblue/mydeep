@@ -1,0 +1,15 @@
+embed_dim: 64
+n_layers: 3
+lr: 0.001
+batch_size: 16384
+eval_batch_size: 8192
+epochs: 5
+reg: 1e-4
+neighbor_sampling: false
+num_neighbors: 20
+use_gpu: false
+save_path: "checkpoints/lightgcn.pt"
+log_interval: 1
+topk: 20
+# 评估时过滤训练/验证交互
+filter_seen: true

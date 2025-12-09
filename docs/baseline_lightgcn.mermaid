@@ -1,0 +1,24 @@
+```mermaid
+graph LR
+    U["User Embeddings"]:::emb -- "concat" --> E["All Embeddings"]
+    I["Item Embeddings"]:::emb -- "concat" --> E
+    A["A_norm (symmetric normalized adjacency)"]:::adj --- L1["Graph Propagation L1"]
+    L1 --> X1["X1 = A * E"]
+    A --- L2["Graph Propagation L2"]
+    L2 --> X2["X2 = A * X1"]
+    A --- L3["Graph Propagation L3"]
+    L3 --> X3["X3 = A * X2"]
+    S["Layer Aggregation<br/>(sum/mean of E, X1, X2, X3)"]:::agg
+    E --> S
+    X1 --> S
+    X2 --> S
+    X3 --> S
+    S --> U_out["User Representation"]
+    S --> I_out["Item Representation"]
+    U_out -- "dot" --> Score["Inner Product Scores"]
+    Score --> BPR["BPR Loss"]
+    classDef emb fill:#CDE3FF,stroke:#1E6FFF;
+    classDef adj fill:#FFE6CC,stroke:#FF9900;
+    classDef agg fill:#EAF7E1,stroke:#67C23A;
+    %% LightGCN 结构说明：无全连接层、无非线性、无权重变换
+```

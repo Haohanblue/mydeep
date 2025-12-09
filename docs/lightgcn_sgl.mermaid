@@ -1,0 +1,20 @@
+```mermaid
+flowchart LR
+    U["User Embeddings"]:::emb -- "concat" --> E["All Embeddings"]
+    I["Item Embeddings"]:::emb -- "concat" --> E
+    A1["View1: A_norm with edge/node/rw dropout"]:::adj --- L1v1["L1"]
+    A2["View2: A_norm with edge/node/rw dropout"]:::adj --- L1v2["L1"]
+    L1v1 --> L2v1["L2"] --> L3v1["L3"] --> Agg1["Aggregation v1"]
+    L1v2 --> L2v2["L2"] --> L3v2["L3"] --> Agg2["Aggregation v2"]
+    Agg1 --> z1_u["User rep (view1)"]
+    Agg2 --> z2_u["User rep (view2)"]
+    z1_u -- "InfoNCE" --> Contrast["Contrastive Loss"]
+    E --> S["Agg baseline"]:::agg --> U_out["User rep"]
+    I_out["Item rep"]
+    U_out -- "dot" --> Score["Inner Product Scores"]
+    Score --> BPR["BPR Loss"]
+    classDef emb fill:#CDE3FF,stroke:#1E6FFF;
+    classDef adj fill:#FFE6CC,stroke:#FF9900;
+    classDef agg fill:#EAF7E1,stroke:#67C23A;
+    %% SGL 分支：两视图传播 + InfoNCE，对比损失与 BPR 并行优化
+```
