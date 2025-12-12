@@ -37,6 +37,10 @@ class LightGCN(nn.Module):
         user_out, item_out = torch.split(out, [self.n_users, self.n_items], dim=0)
         return user_out, item_out
 
+    def get_all_embeddings(self):
+        user_out, item_out = self.computer()
+        return user_out.detach(), item_out.detach()
+
     def getUsersRating(self, users):
         user_out, item_out = self.computer()
         users_emb = user_out[users]  # (B, D)

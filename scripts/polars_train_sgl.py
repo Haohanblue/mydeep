@@ -162,6 +162,9 @@ def main():
     parser.add_argument('--aug', type=str, default=None, choices=['edge','node','rw'])
     parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--epochs', type=int, default=None)
+    parser.add_argument('--eval_sample', type=str, default='')
+    parser.add_argument('--eval_candidates', type=int, default=0)
+    parser.add_argument('--eval_users_limit', type=int, default=0)
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -172,6 +175,12 @@ def main():
     temperature = ssl_cfg.get('temperature', 0.2)
 
     device = torch.device(args.device if (args.device != 'cpu' and cfg.get('use_gpu', False)) else 'cpu')
+    if args.eval_sample:
+        cfg['eval_sample'] = (args.eval_sample.lower() == 'true')
+    if args.eval_candidates and args.eval_candidates > 0:
+        cfg['eval_candidates'] = int(args.eval_candidates)
+    if args.eval_users_limit and args.eval_users_limit > 0:
+        cfg['eval_users_limit'] = int(args.eval_users_limit)
     seed_train = int(cfg.get('seed', {}).get('train', 42))
     seed_eval = int(cfg.get('seed', {}).get('eval', 42))
     np.random.seed(seed_train)

@@ -30,12 +30,21 @@ def main():
     parser.add_argument('--graph_dir', type=str, default='data/graph')
     parser.add_argument('--topk', type=int, default=20)
     parser.add_argument('--device', type=str, default='cpu')
+    parser.add_argument('--eval_sample', type=str, default='')
+    parser.add_argument('--eval_candidates', type=int, default=0)
+    parser.add_argument('--eval_users_limit', type=int, default=0)
     args = parser.parse_args()
 
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
     import torch as _torch
     device = _torch.device(args.device if (args.device != 'cpu' and cfg.get('use_gpu', False)) else 'cpu')
+    if args.eval_sample:
+        cfg['eval_sample'] = (args.eval_sample.lower() == 'true')
+    if args.eval_candidates and args.eval_candidates > 0:
+        cfg['eval_candidates'] = int(args.eval_candidates)
+    if args.eval_users_limit and args.eval_users_limit > 0:
+        cfg['eval_users_limit'] = int(args.eval_users_limit)
 
     split_dir = os.path.join(args.proc_dir, 'split')
     train_df = (

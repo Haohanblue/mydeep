@@ -1,5 +1,6 @@
 import argparse
 import sys
+import random
 
 def run(
     data_path: str,
@@ -43,9 +44,39 @@ def run(
             df.group_by("user_id").len().filter(pl.col("len") >= min_interactions).select("user_id")
         )
         df = df.join(keep_users, on="user_id", how="inner")
-    n = df.height
-    k = light_samples if light_samples < n else n
-    out = df.sample(n=k, shuffle=True, seed=seed)
+        df = df.with_row_index("__ri__")
+        users = df.select("user_id").unique()["user_id"].to_list()
+        if not users:
+            out = df.select(["user_id", "item_id", "category_id", "behavior_type", "timestamp"]) 
+        else:
+            num_users = light_samples // min_interactions if light_samples >= min_interactions else 1
+            if num_users < 1:
+                num_users = 1
+            if num_users > len(users):
+                num_users = len(users)
+            rng = random.Random(seed)
+            sel_users = rng.sample(users, num_users)
+            parts = []
+            extras = []
+            for i, u in enumerate(sel_users):
+                ud = df.filter(pl.col("user_id") == u)
+                base = ud.sample(n=min_interactions, shuffle=True, seed=seed + i)
+                parts.append(base)
+                rem = ud.filter(~pl.col("__ri__").is_in(base["__ri__"].to_list()))
+                if rem.height > 0:
+                    extras.append(rem)
+            out = pl.concat(parts) if parts else pl.DataFrame([])
+            remain = light_samples - out.height
+            if remain > 0 and extras:
+                extra_pool = pl.concat(extras)
+                take = remain if remain < extra_pool.height else extra_pool.height
+                add = extra_pool.sample(n=take, shuffle=True, seed=seed + 999)
+                out = pl.concat([out, add])
+            out = out.select(["user_id", "item_id", "category_id", "behavior_type", "timestamp"]) 
+    else:
+        n = df.height
+        k = light_samples if light_samples < n else n
+        out = df.sample(n=k, shuffle=True, seed=seed)
     out = out.select(["user_id", "item_id", "category_id", "behavior_type", "timestamp"])
     # 强制时间列为整数字符串，避免后续 lazy cast 报错
     out = out.with_columns(
