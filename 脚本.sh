@@ -5,12 +5,14 @@ uv run scripts/make_fixed_sample.py \
   --light_samples 500000 \
   --seed 2025 \
   --has_header False
+
+uv run scripts/make_fixed_sample.py --data_path UserBehavior.csv --output_path data/UserBehavior_fixed_sample.csv --light_samples 10000 --seed 2025 --has_header False --min_interactions 5
 ## 2.从50w条采样数据中，数据预处理，拆分成train、valid、test三部分,指定输出到路径，和最小交互次数的标准
 ## 这个是lightgcn模型的预处理
 uv run scripts/polars_prepare_taobao.py \
   --data_path data/UserBehavior_fixed_sample.csv \
   --output_dir data/processed \
-  --min_interactions 3 \
+  --min_interactions 2 \
   --mode full \
   --use_multi_behavior True \
   --behavior_weights "click:1,cart:2,fav:2,buy:3" \

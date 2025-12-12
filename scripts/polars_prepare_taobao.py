@@ -255,8 +255,6 @@ def main():
             )
 
     lf = lf.select(["user_id", "item_id", "category_id", "behavior_type", "timestamp"])
-    lf = lf.with_columns(pl.col("timestamp").cast(pl.Utf8))
-    lf = lf.filter(pl.col("timestamp").str.contains(r"^\d+$"))
 
     start_ts = int(time.mktime(time.strptime("2017-11-25 00:00:00", "%Y-%m-%d %H:%M:%S")))
     end_ts = int(time.mktime(time.strptime("2017-12-03 23:59:59", "%Y-%m-%d %H:%M:%S")))
@@ -296,23 +294,22 @@ def main():
     if args.time_decay and args.time_decay > 0:
         df = apply_time_decay(df, args.time_decay, args.recent_days)
 
-    # ---------- 4) leave-one-out 切分 ---------- #
+    # ---------- 4) 先按总交互数过滤，再 leave-one-out ---------- #
+    df = filter_by_min_interactions(df, args.min_interactions)
+    
+    # 与 pandas 保持一致：阈值在拆分前按总交互数统计
+    # 不再基于训练集对 valid/test 进行对齐过滤
+    # ---------- 5) leave-one-out 切分 ---------- #
     train, valid, test = leave_one_out_split(df)
-    print(f"[SplitRaw] Train={train.height}, Valid={valid.height}, Test={test.height}")
+    print(f"[Split] Train={train.height}, Valid={valid.height}, Test={test.height}")
 
-    # ---------- 5) 构建 ID 映射并重映射 ---------- #
+    # ---------- 6) 构建 ID 映射并重映射 ---------- #
     user_map, item_map, user2id, item2id = build_id_mapping(train, valid, test)
     train = remap_ids(train, user_map, item_map)
     valid = remap_ids(valid, user_map, item_map)
     test = remap_ids(test, user_map, item_map)
 
-    # ---------- 6) min_interactions 过滤 + 对齐 valid/test ---------- #
-    train = filter_by_min_interactions(train, args.min_interactions)
-    keep_users = train["user_id"].unique()
-    keep_users_df = pl.DataFrame({"user_id": keep_users})
-    valid = valid.join(keep_users_df, on="user_id", how="inner")
-    test = test.join(keep_users_df, on="user_id", how="inner")
-    print(f"[SplitFinal] Train={train.height}, Valid={valid.height}, Test={test.height}")
+    # 与 pandas 对齐：不在拆分后再次按训练集过滤有效/测试
 
     # ---------- 7) 保存映射 JSON ---------- #
     mapping_dir = os.path.join(args.output_dir, "mapping")

@@ -1,7 +1,14 @@
 import argparse
 import sys
 
-def run(data_path: str, output_path: str, light_samples: int, seed: int, has_header: bool):
+def run(
+    data_path: str,
+    output_path: str,
+    light_samples: int,
+    seed: int,
+    has_header: bool,
+    min_interactions: int,
+):
     try:
         import polars as pl
     except Exception:
@@ -31,6 +38,11 @@ def run(data_path: str, output_path: str, light_samples: int, seed: int, has_hea
                 names[4]: "timestamp",
             }
         )
+    if min_interactions and min_interactions > 1:
+        keep_users = (
+            df.group_by("user_id").len().filter(pl.col("len") >= min_interactions).select("user_id")
+        )
+        df = df.join(keep_users, on="user_id", how="inner")
     n = df.height
     k = light_samples if light_samples < n else n
     out = df.sample(n=k, shuffle=True, seed=seed)
@@ -57,6 +69,7 @@ def main():
     parser.add_argument("--light_samples", type=int, required=True)
     parser.add_argument("--seed", type=int, default=2025)
     parser.add_argument("--has_header", type=str, default="True")
+    parser.add_argument("--min_interactions", type=int, default=1)
     args = parser.parse_args()
     run(
         data_path=args.data_path,
@@ -64,6 +77,7 @@ def main():
         light_samples=args.light_samples,
         seed=args.seed,
         has_header=(args.has_header.lower() == "true"),
+        min_interactions=args.min_interactions,
     )
 
 if __name__ == "__main__":
