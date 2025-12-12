@@ -2,7 +2,7 @@
 uv run scripts/make_fixed_sample.py \
   --data_path UserBehavior.csv \
   --output_path data/UserBehavior_fixed_sample.csv \
-  --light_samples 1000000 \
+  --light_samples 500000 \
   --seed 2025 \
   --has_header False
 ## 2.从50w条采样数据中，数据预处理，拆分成train、valid、test三部分,指定输出到路径，和最小交互次数的标准
