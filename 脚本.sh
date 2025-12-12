@@ -67,3 +67,66 @@ uv run -m scripts.porlars_evaluate_sgl \
   --graph_dir data/graph_sgl \
   --topk 20 \
   --device cpu
+
+
+
+## 最原始的脚本
+#### lightgcn模型
+uv run scripts/prepare_taobao.py \
+  --data_path data/UserBehavior_sample.csv \
+  --output_dir data/processed \
+  --min_interactions 5 \
+  --mode light \
+  --light_samples 100000 \
+  --use_multi_behavior True \
+  --behavior_weights "click:1,cart:2,fav:2,buy:3" \
+  --time_decay 0.98 --recent_days 7
+
+  uv run scripts/build_graph.py \
+  --proc_dir data/processed \
+  --out_dir data/graph \
+  --use_sparse True
+
+ uv run -m scripts.train \
+  --config configs/lightgcn.yaml \
+  --proc_dir data/processed \
+  --graph_dir data/graph \
+  --topk 20 \
+  --device cpu 
+
+ uv run -m scripts.evaluate \
+  --config configs/lightgcn.yaml \
+  --proc_dir data/processed \
+  --graph_dir data/graph \
+  --topk 20 \
+  --device cpu
+
+### lighgcn-gcl模型
+uv run scripts/prepare_taobao.py \
+  --data_path data/UserBehavior_sample.csv \
+  --output_dir data/processed_sgl \
+  --min_interactions 5 \
+  --mode light \
+  --light_samples 100000 \
+  --use_multi_behavior True \
+  --behavior_weights "click:1,cart:2,fav:2,buy:3" \
+  --time_decay 0.98 --recent_days 7
+
+  uv run scripts/build_graph.py \
+  --proc_dir data/processed_sgl \
+  --out_dir data/graph_sgl \
+  --use_sparse True
+
+ uv run -m scripts.train \
+  --config configs/lightgcn_sgl.yaml \
+  --proc_dir data/processed_sgl \
+  --graph_dir data/graph_sgl \
+  --topk 20 \
+  --device cpu 
+
+ uv run -m scripts.evaluate \
+  --config configs/lightgcn_sgl.yaml \
+  --proc_dir data/processed_sgl \
+  --graph_dir data/graph_sgl \
+  --topk 20 \
+  --device cpu
