@@ -1,23 +1,24 @@
 ## 新版流程
 # 先过滤原始数据，指定交互次数范围。
+
 uv run scripts/filter_min_interactions.py --data_path UserBehavior.csv --output_path data/UserBehavior_filtered_50_200.csv --min_interactions 50 --max_interactions 200 --has_header False --print_stats True
-uv run scripts/sample_users.py --data_path data/UserBehavior_filtered_50_200.csv --output_path data/UserBehavior_user_sampled.csv --num_users 2000 --has_header False --seed 2025 --print_stats True
+uv run scripts/sample_users.py --data_path data/UserBehavior_filtered_50_200.csv --output_path data/UserBehavior_user_sampled.csv --num_users 30000 --has_header False --seed 2025 --print_stats True
 
 
-## 1.从全量数据集中，抽样数据，以下为50w条，seed=2025，输出到data/UserBehavior_fixed_sample.csv
-uv run scripts/make_fixed_sample.py \
-  --data_path UserBehavior.csv \
-  --output_path data/UserBehavior_fixed_sample.csv \
-  --light_samples 1000000 \
-  --seed 2025 \
-  --has_header False
+# ## 1.从全量数据集中，抽样数据，以下为50w条，seed=2025，输出到data/UserBehavior_fixed_sample.csv
+# uv run scripts/make_fixed_sample.py \
+#   --data_path UserBehavior.csv \
+#   --output_path data/UserBehavior_fixed_sample.csv \
+#   --light_samples 1000000 \
+#   --seed 2025 \
+#   --has_header False
 
-uv run scripts/filter_min_interactions.py --data_path data/UserBehavior_fixed_sample.csv --output_path data/UserBehavior_filtered.csv --min_interactions 5 --has_header False --print_stats True
-uv run scripts/make_fixed_sample.py --data_path UserBehavior.csv --output_path data/UserBehavior_fixed_sample.csv --light_samples 100000 --seed 2025 --has_header False --min_interactions 5
+# uv run scripts/filter_min_interactions.py --data_path data/UserBehavior_fixed_sample.csv --output_path data/UserBehavior_filtered.csv --min_interactions 5 --has_header False --print_stats True
+# uv run scripts/make_fixed_sample.py --data_path UserBehavior.csv --output_path data/UserBehavior_fixed_sample.csv --light_samples 100000 --seed 2025 --has_header False --min_interactions 5
 ## 2.从50w条采样数据中，数据预处理，拆分成train、valid、test三部分,指定输出到路径，和最小交互次数的标准
 ## 这个是lightgcn模型的预处理
 uv run scripts/polars_prepare_taobao.py \
-  --data_path data/UserBehavior_fixed_sample.csv \
+  --data_path data/UserBehavior_user_sampled.csv \
   --output_dir data/processed \
   --min_interactions 2 \
   --mode full \
