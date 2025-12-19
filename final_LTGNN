@@ -1,0 +1,293 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.optim import Adam
+import numpy as np
+import pandas as pd
+import random
+from tqdm import tqdm
+from collections import defaultdict
+import math
+
+# ==================== 配置 ====================
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+embedding_dim = 64
+neighbor_sample_size = 15
+memory_length = 5
+lr = 0.001
+weight_decay = 1e-5
+batch_size = 512
+epochs = 45
+K = 20
+
+# ===== Recall 导向超参 =====
+POS_PER_USER = 8
+NEG_POOL = 2000
+CANDIDATE_SIZE = 12000    
+MAX_HIST = 50
+TEMPERATURE = 2.0
+MARGIN = 0.2
+
+behavior_weights = {
+    "pv": 0.1,
+    "fav": 0.3,
+    "cart": 0.5,
+    "buy": 1.0
+}
+
+# ==================== 数据加载 ====================
+def load_data():
+    train_path = "/home/wanghl/xieyanbing/new_data/5W/processed/split/train.csv"
+    val_path   = "/home/wanghl/xieyanbing/new_data/5W/processed/split/valid.csv"
+    test_path  = "/home/wanghl/xieyanbing/new_data/5W/processed/split/test.csv"
+
+    train_df = pd.read_csv(train_path)
+    val_df   = pd.read_csv(val_path)
+    test_df  = pd.read_csv(test_path)
+
+    all_df = pd.concat([train_df, val_df, test_df])
+    user_map = {u: i for i, u in enumerate(all_df["user_id"].unique())}
+    item_offset = len(user_map)
+    item_map = {i: item_offset + j for j, i in enumerate(all_df["item_id"].unique())}
+
+    num_users = len(user_map)
+    num_items = len(item_map)
+
+    for df in [train_df, val_df, test_df]:
+        df["user_idx"] = df["user_id"].map(user_map)
+        df["item_idx_global"] = df["item_id"].map(item_map)
+
+    print(f"Users: {num_users:,}, Items: {num_items:,}")
+    return train_df, val_df, test_df, num_users, num_items
+
+# ==================== 邻接表 ====================
+def build_adj_list(df):
+    adj = defaultdict(list)
+    for _, r in df.iterrows():
+        u = r["user_idx"]
+        i = r["item_idx_global"]
+        w = behavior_weights.get(r["behavior_type"], 0.1)
+        adj[u].append((i, w))
+        adj[i].append((u, w))
+    return adj
+
+# ==================== LTGNN ====================
+class LTGNN(nn.Module):
+    def __init__(self, num_users, num_items, dim, ns, ml):
+        super().__init__()
+        self.num_users = num_users
+        self.embedding = nn.Embedding(num_users + num_items, dim)
+        self.ns = ns
+        self.ml = ml
+
+        self.register_buffer("memory_bank", torch.zeros(num_users + num_items, ml, dim))
+        self.register_buffer("memory_ptr", torch.zeros(num_users + num_items, dtype=torch.long))
+
+        nn.init.xavier_uniform_(self.embedding.weight)
+
+    def sample_neighbors(self, nodes, adj):
+        neighs, weights = [], []
+        for n in nodes:
+            cand = adj[n]
+            if cand:
+                k = min(self.ns, len(cand))
+                sampled = random.sample(cand, k)
+            else:
+                sampled = [(n, 1.0)]
+            ns, ws = zip(*sampled)
+            neighs.append(list(ns))
+            weights.append(list(ws))
+        return neighs, weights
+
+    def update_memory(self, nodes, embs):
+        ptr = self.memory_ptr[nodes]
+        self.memory_bank[nodes, ptr] = embs.detach()
+        self.memory_ptr[nodes] = (ptr + 1) % self.ml
+
+    def forward(self, users, adj, training=True):
+        cur = self.embedding(users)
+        ns, ws = self.sample_neighbors(users.tolist(), adj)
+
+        neigh_embs = []
+        for i, neigh in enumerate(ns):
+            n_tensor = torch.tensor(neigh, device=device)
+            w_tensor = torch.tensor(ws[i], device=device)
+            e = self.embedding(n_tensor)
+            neigh_embs.append((e * w_tensor.unsqueeze(-1)).mean(0))
+        neigh = torch.stack(neigh_embs)
+
+        mem = self.memory_bank[users].mean(1)
+        out = cur + neigh + mem
+
+        if training:
+            self.update_memory(users, out)
+
+        return F.normalize(out, dim=-1)
+
+# ==================== 训练一轮（OOM-safe） ====================
+def train_one_epoch(model, opt, train_df, adj, num_items):
+    model.train()
+    user_items = defaultdict(list)
+
+    for _, r in train_df.iterrows():
+        w = behavior_weights.get(r["behavior_type"], 0.1)
+        user_items[r["user_idx"]].append((r["item_idx_global"], w))
+
+    users = list(user_items.keys())
+    random.shuffle(users)
+
+    loss_sum, cnt = 0.0, 0
+
+    for i in tqdm(range(0, len(users), batch_size), leave=False):
+        batch_users = users[i:i + batch_size]
+        if len(batch_users) < 2:
+            continue
+
+        bu_expand, pos_items = [], []
+
+        for u in batch_users:
+            items, ws = zip(*user_items[u])
+            ws = np.array(ws) / np.sum(ws)
+            idxs = np.random.choice(len(items), min(POS_PER_USER, len(items)), replace=False, p=ws)
+            for idx in idxs:
+                bu_expand.append(u)
+                pos_items.append(items[idx])
+
+        bu_t = torch.LongTensor(bu_expand).to(device)
+        pos = torch.LongTensor(pos_items).to(device)
+
+        opt.zero_grad()
+        u_emb = model(bu_t, adj, training=True)
+
+        # ===== 历史增强 =====
+        hist = []
+        for u in bu_expand:
+            its = [it for it, _ in user_items[u][-MAX_HIST:]]
+            hist.append(model.embedding(torch.LongTensor(its).to(device)).mean(0))
+        u_emb = F.normalize(u_emb + torch.stack(hist), dim=-1)
+
+        p_emb = model.embedding(pos)
+
+        # ===== 安全负采样（无全量 matmul）=====
+        with torch.no_grad():
+            rand_idx = torch.randint(
+                0, num_items, (CANDIDATE_SIZE,), device=device
+            )
+            cand_items = rand_idx + model.num_users
+            cand_emb = model.embedding(cand_items)
+
+            scores = torch.matmul(u_emb, cand_emb.t()) / TEMPERATURE
+
+            neg_pool = torch.topk(
+                scores,
+                k=min(NEG_POOL, CANDIDATE_SIZE),
+                dim=1
+            ).indices
+
+            pick = random.randint(
+                int(NEG_POOL * 0.3),
+                int(NEG_POOL * 0.9)
+            )
+            neg = cand_items[neg_pool[:, pick]]
+
+        n_emb = model.embedding(neg)
+
+        loss = -F.logsigmoid(
+            (u_emb * p_emb).sum(1) -
+            (u_emb * n_emb).sum(1) -
+            MARGIN
+        ).mean()
+
+        loss.backward()
+        opt.step()
+
+        loss_sum += loss.item()
+        cnt += 1
+
+    return loss_sum / cnt
+
+# ==================== evaluate ====================
+def evaluate(model, df, adj, num_users, num_items, topk=20):
+    model.eval()
+    user_gt = defaultdict(set)
+
+    for _, r in df.iterrows():
+        user_gt[r["user_idx"]].add(r["item_idx_global"] - num_users)
+
+    users = list(user_gt.keys())
+    recall, ndcg, hit = [], [], []
+
+    with torch.no_grad():
+        item_emb = model.embedding.weight[num_users:].to(device)
+
+        for u in users:
+            u_emb = model(torch.LongTensor([u]).to(device), adj, False)
+            scores = torch.matmul(u_emb, item_emb.t())
+            topk_idx = torch.topk(scores, k=topk).indices.squeeze(0).cpu().numpy()
+
+            gt = user_gt[u]
+            hits = len(set(topk_idx) & gt)
+
+            recall.append(hits / len(gt))
+            hit.append(float(hits > 0))
+            dcg = sum(1 / math.log2(i + 2) for i, pid in enumerate(topk_idx) if pid in gt)
+            idcg = sum(1 / math.log2(i + 2) for i in range(min(len(gt), topk))) or 1e-8
+            ndcg.append(dcg / idcg)
+
+    return np.mean(recall), np.mean(ndcg), np.mean(hit)
+
+# ==================== 主程序 ====================
+if __name__ == "__main__":
+    train_df, val_df, test_df, num_users, num_items = load_data()
+    adj_list = build_adj_list(train_df)
+
+    model = LTGNN(num_users, num_items, embedding_dim, neighbor_sample_size, memory_length).to(device)
+    optimizer = Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    best_ndcg = 0.0
+
+    for epoch in range(1, epochs + 1):
+        loss = train_one_epoch(model, optimizer, train_df, adj_list, num_items)
+
+        val_r, val_n, _ = evaluate(model, val_df, adj_list, num_users, num_items, K)
+        test_r, test_n, _ = evaluate(model, test_df, adj_list, num_users, num_items, K)
+
+        if test_n > best_ndcg:
+            best_ndcg = test_n
+            torch.save(model.state_dict(), "best_LTGN_model.pth")
+
+        print(
+            f"Epoch {epoch:02d} | "
+            f"Loss {loss:.4f} | "
+            f"Val Recall@{K} {val_r:.4f} | "
+            f"Val NDCG@{K} {val_n:.4f} | "
+            f"Test Recall@{K} {test_r:.4f} | "
+            f"Test NDCG@{K} {test_n:.4f}"
+        )
+
+    print("\n" + "=" * 50)
+    print("训练完成！最终测试指标：")
+
+    final_r, final_n, final_h = evaluate(
+        model,
+        test_df,
+        adj_list,
+        num_users,
+        num_items,
+        K
+    )
+
+    print(f"Recall@{K}:  {final_r:.4f}")
+    print(f"NDCG@{K}:    {final_n:.4f}")
+    print(f"HitRate@{K}: {final_h:.4f}")
+    print(f"最佳 NDCG@{K} = {best_ndcg:.4f}")
+    print("=" * 50)
+
