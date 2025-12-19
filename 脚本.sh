@@ -28,7 +28,7 @@ uv run scripts/polars_prepare_taobao.py \
   --recent_days 7
 ## 这个是lighgcn-gcl的预处理
 uv run scripts/polars_prepare_taobao.py \
-  --data_path data/UserBehavior_fixed_sample.csv \
+  --data_path data/UserBehavior_user_sampled.csv \
   --output_dir data/processed_sgl \
   --min_interactions 3 \
   --mode full \

@@ -183,8 +183,15 @@ def main():
         cfg['eval_users_limit'] = int(args.eval_users_limit)
     seed_train = int(cfg.get('seed', {}).get('train', 42))
     seed_eval = int(cfg.get('seed', {}).get('eval', 42))
+    import random
+    random.seed(seed_train)
+    os.environ["PYTHONHASHSEED"] = str(seed_train)
     np.random.seed(seed_train)
     torch.manual_seed(seed_train)
+    try:
+        torch.use_deterministic_algorithms(True)
+    except Exception:
+        pass
     split_dir = os.path.join(args.proc_dir, 'split')
     map_dir = os.path.join(args.proc_dir, 'mapping')
 
@@ -259,7 +266,13 @@ def main():
         model.final_user_emb = None
         model.final_item_emb = None
         np.random.seed(seed_eval)
+        import random
+        random.seed(seed_eval)
         torch.manual_seed(seed_eval)
+        try:
+            torch.use_deterministic_algorithms(True)
+        except Exception:
+            pass
         if cfg.get('eval_sample', False):
             rec, nd, hit = evaluate_sampled(
                 model,
